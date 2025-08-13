@@ -30,15 +30,15 @@ interface ResponsiveDrawerProps {
 }
 
 interface User {
-    full_name: string;
-    role: string;
+    id: string;
+    email: string;
+    role: string; // e.g. "admin" or "user"
+    phone?: string;
+    full_name?: string;
     avatar?: string | null;
 }
 
-export default function ResponsiveDrawer({
-    window,
-    children,
-}: ResponsiveDrawerProps) {
+export default function ResponsiveDrawer({ window, children }: ResponsiveDrawerProps) {
     const theme = useTheme();
     const navigate = useNavigate();
 
@@ -54,7 +54,8 @@ export default function ResponsiveDrawer({
         try {
             const userDataStr = localStorage.getItem('user');
             if (userDataStr) {
-                setUser(JSON.parse(userDataStr));
+                const userObj: User = JSON.parse(userDataStr);
+                setUser(userObj);
             }
         } catch {
             setUser(null);
@@ -106,6 +107,18 @@ export default function ResponsiveDrawer({
         }
 
         navigate('/login', { replace: true });
+    };
+
+    // Role display mapping function
+    const roleDisplayName = (role: string) => {
+        switch (role.toLowerCase()) {
+            case 'admin':
+                return 'Admin';
+            case 'user':
+                return 'User';
+            default:
+                return role;
+        }
     };
 
     const drawer = (
@@ -188,9 +201,7 @@ export default function ResponsiveDrawer({
                     backgroundColor: theme.palette.background.paper,
                     color: theme.palette.text.primary,
                     boxShadow:
-                        theme.palette.mode === 'light'
-                            ? '0 2px 4px rgba(0,0,0,0.1)'
-                            : '0 2px 10px rgba(0,0,0,0.7)',
+                        theme.palette.mode === 'light' ? '0 2px 4px rgba(0,0,0,0.1)' : '0 2px 10px rgba(0,0,0,0.7)',
                     borderBottom: `1px solid ${theme.palette.divider}`,
                 }}
             >
@@ -230,7 +241,7 @@ export default function ResponsiveDrawer({
                             alignSelf: 'center',
                         }}
                     >
-                        {user ? `${user.full_name} (${user.role})` : ''}
+                        {user ? `${user.full_name || ''} (${roleDisplayName(user.role)})` : ''}
                     </Typography>
 
                     {/* Profile avatar with menu */}
@@ -300,8 +311,7 @@ export default function ResponsiveDrawer({
                         '& .MuiDrawer-paper': {
                             boxSizing: 'border-box',
                             width: drawerWidth,
-                            backgroundColor:
-                                theme.palette.mode === 'light' ? '#fafafa' : theme.palette.background.paper,
+                            backgroundColor: theme.palette.mode === 'light' ? '#fafafa' : theme.palette.background.paper,
                         },
                     }}
                 >
@@ -316,8 +326,7 @@ export default function ResponsiveDrawer({
                         '& .MuiDrawer-paper': {
                             boxSizing: 'border-box',
                             width: drawerWidth,
-                            backgroundColor:
-                                theme.palette.mode === 'light' ? '#fafafa' : theme.palette.background.paper,
+                            backgroundColor: theme.palette.mode === 'light' ? '#fafafa' : theme.palette.background.paper,
                         },
                     }}
                     open

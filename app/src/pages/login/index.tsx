@@ -25,9 +25,10 @@ interface LoginProps {
 
 interface User {
     id: string;
-    username: string;
-    full_name: string;
+    email: string;
     role: string;
+    phone?: string;
+    full_name?: string;
     avatar?: string | null;
 }
 
@@ -67,7 +68,22 @@ const Login = ({
                 localStorage.setItem('auth_token', response.access_token);
             }
             if (response.user) {
-                localStorage.setItem('user', JSON.stringify(response.user));
+                // Derive full_name from email if not provided
+                const fullName =
+                    response.user.full_name ||
+                    response.user.email.split('@')[0];
+
+                // Convert role: 'authenticated' => 'user', else keep as is (e.g. 'admin')
+                const role =
+                    response.user.role === 'authenticated' ? 'user' : response.user.role;
+
+                const userWithFullName: User = {
+                    ...response.user,
+                    full_name: fullName,
+                    role,
+                };
+
+                localStorage.setItem('user', JSON.stringify(userWithFullName));
                 navigate('/dashboard', { replace: true });
             }
         }

@@ -20,8 +20,12 @@ import {
     InputLabel,
     FormControl,
     useMediaQuery,
+    Stack,
+    TablePagination,
 } from '@mui/material';
 import { darken } from '@mui/material';
+import useEndpoint from '../../api';
+import type { EndpointResponse } from '../../api';
 
 interface ListingInterface {
     id?: string;
@@ -51,7 +55,6 @@ const styleModal = {
     boxShadow: 24,
     borderRadius: 2,
     maxHeight: '90vh',
-    p: 0,
     display: 'flex',
     flexDirection: 'column',
 };
@@ -61,11 +64,6 @@ const Index = ({
     secondaryColor = '#ff5722',
     mode = 'light',
 }: IndexProps) => {
-    const [listings, setListings] = useState<ListingInterface[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-
-    // Modal & form state
     const [modalOpen, setModalOpen] = useState(false);
     const [editMode, setEditMode] = useState(false);
     const [currentListing, setCurrentListing] = useState<ListingInterface>({
@@ -79,16 +77,19 @@ const Index = ({
     });
     const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-    const [saving, setSaving] = useState(false);
+    const [userRole, setUserRole] = useState<string | null>(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [page, setPage] = useState(0);
+    const [rowsPerPage, setRowsPerPage] = useState(5);
+
+    // --- View-only modal ---
+    const [viewModalOpen, setViewModalOpen] = useState(false);
+    const [viewListing, setViewListing] = useState<ListingInterface | null>(null);
 
     const isSmallScreen = useMediaQuery(`(max-width:600px)`);
-
-    // Darken primary color for hover effects
     const primaryDark = useMemo(() => darken(primaryColor, 0.2), [primaryColor]);
 
-    // User role state (read from localStorage)
-    const [userRole, setUserRole] = useState<string | null>(null);
-
+    // --- Initialize user role ---
     useEffect(() => {
         const userJson = localStorage.getItem('user');
         if (userJson) {
@@ -101,6 +102,7 @@ const Index = ({
         }
     }, []);
 
+    // --- Image preview for add/edit ---
     useEffect(() => {
         if (!selectedImageFile) {
             setPreviewUrl(null);
@@ -114,20 +116,26 @@ const Index = ({
         };
     }, [selectedImageFile]);
 
-    const fetchListings = async () => {
-        setLoading(true);
-        setError(null);
-        try {
-            const res = await fetch('/api/listings');
-            if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-            const data = await res.json();
-            setListings(data.listings || data);
-        } catch (e) {
-            setError(e instanceof Error ? e.message : 'Failed to fetch listings');
-        } finally {
-            setLoading(false);
-        }
-    };
+    // --- Hook for listings ---
+    const {
+        data: listingsData,
+        error: listingsError,
+        isLoading: listingsLoading,
+        execute: fetchListings,
+    }: EndpointResponse<{ listings: ListingInterface[] }> = useEndpoint({
+        url: '/api/listings',
+        method: 'GET',
+    });
+
+    const saveListingEndpoint = useEndpoint<ListingInterface, FormData>({
+        url: '/api/listings/create',
+        method: 'POST',
+    });
+
+    const deleteListingEndpoint = useEndpoint<{ message: string }, unknown>({
+        url: '/api/listings',
+        method: 'DELETE',
+    });
 
     useEffect(() => {
         fetchListings();
@@ -163,17 +171,12 @@ const Index = ({
             }
         }
 
-        setCurrentListing({
-            ...listing,
-            images: parsedImages,
-        });
+        setCurrentListing({ ...listing, images: parsedImages });
         setSelectedImageFile(null);
         setModalOpen(true);
     };
 
-    const handleModalClose = () => {
-        if (!saving) setModalOpen(false);
-    };
+    const handleModalClose = () => setModalOpen(false);
 
     const handleChange = <K extends keyof ListingInterface>(key: K, value: ListingInterface[K]) => {
         setCurrentListing((prev) => ({ ...prev, [key]: value }));
@@ -192,19 +195,27 @@ const Index = ({
         return [];
     }, [currentListing.images]);
 
+    const filteredListings = useMemo(() => {
+        if (!listingsData?.listings) return [];
+        return listingsData.listings.filter((listing) =>
+            listing.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            listing.location_address.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            listing.property_type.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            listing.status.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            listing.price.toString().includes(searchQuery)
+        );
+    }, [listingsData, searchQuery]);
+
+    const paginatedListings = useMemo(() => {
+        const start = page * rowsPerPage;
+        return filteredListings.slice(start, start + rowsPerPage);
+    }, [filteredListings, page, rowsPerPage]);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (!currentListing.title.trim()) {
-            setError('Title is required');
-            return;
-        }
-        if (!currentListing.location_address.trim()) {
-            setError('Address is required');
-            return;
-        }
-        if (currentListing.price <= 0) {
-            setError('Price must be greater than zero');
+        if (!currentListing.title.trim() || !currentListing.location_address.trim() || currentListing.price < 0) {
+            alert('Please fill all required fields correctly.');
             return;
         }
 
@@ -216,364 +227,245 @@ const Index = ({
         formData.append('property_type', currentListing.property_type);
         formData.append('status', currentListing.status);
 
-        if (selectedImageFile) {
-            formData.append('images', selectedImageFile);
-        }
-
-        setSaving(true);
-        setError(null);
+        if (selectedImageFile) formData.append('images', selectedImageFile);
 
         try {
             const url = editMode ? `/api/listings/${currentListing.id}` : '/api/listings/create';
             const method = editMode ? 'PUT' : 'POST';
-
-            const res = await fetch(url, {
-                method,
-                body: formData,
-            });
-
-            if (!res.ok) {
-                const errData = await res.json();
-                throw new Error(errData.message || 'Failed to save listing');
-            }
-
-            await fetchListings();
+            await saveListingEndpoint.execute(url, formData, method);
+            fetchListings();
             setModalOpen(false);
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to save listing');
-        } finally {
-            setSaving(false);
+            console.error('Save error:', err);
+            alert('Failed to save listing');
         }
     };
 
     const handleDelete = async (id: string) => {
-        if (saving) return;
         if (!window.confirm('Are you sure you want to delete this listing?')) return;
-
-        setSaving(true);
-        setError(null);
-
         try {
-            const res = await fetch(`/api/listings/${id}`, { method: 'DELETE' });
-
-            if (!res.ok) {
-                let errorMsg = 'Failed to delete listing';
-
-                try {
-                    const errData = await res.json();
-                    errorMsg = errData.message || errorMsg;
-                } catch {
-                    // ignore non-JSON errors
-                }
-
-                throw new Error(errorMsg);
-            }
-
-            await fetchListings();
-        } catch (e) {
-            setError(e instanceof Error ? e.message : 'Failed to delete listing');
-        } finally {
-            setSaving(false);
+            await deleteListingEndpoint.execute(`/api/listings/${id}`, undefined, 'DELETE');
+            fetchListings();
+        } catch (err) {
+            console.error('Delete error:', err);
+            alert('Failed to delete listing');
         }
     };
 
+    // --- View modal functions ---
+    const openViewModal = (listing: ListingInterface) => {
+        setViewListing(listing);
+        setViewModalOpen(true);
+    };
+    const handleViewModalClose = () => setViewModalOpen(false);
+
+    const viewImages = useMemo(() => {
+        if (!viewListing?.images) return [];
+        if (Array.isArray(viewListing.images)) return viewListing.images;
+        if (typeof viewListing.images === 'string') {
+            try {
+                const parsed = JSON.parse(viewListing.images);
+                return Array.isArray(parsed) ? parsed : [];
+            } catch {
+                return [];
+            }
+        }
+        return [];
+    }, [viewListing]);
+
     return (
         <AppLayout primaryColor={primaryColor} secondaryColor={secondaryColor} mode={mode}>
-            <Box sx={{ p: 2, width: '100%', boxSizing: 'border-box' }}>
-                <Typography variant="h5" mb={2}>
-                    Listings Table
-                </Typography>
+            <Box sx={{ p: 2, width: '100%' }}>
+                <Typography variant="h5" mb={2}>Listings Table</Typography>
 
-                {/* Only show Add button if admin */}
                 {userRole === 'admin' && (
                     <Button
                         variant="contained"
                         onClick={openAddModal}
-                        sx={{
-                            mb: 2,
-                            backgroundColor: primaryColor,
-                            color: '#fff',
-                            '&:hover': {
-                                backgroundColor: primaryDark,
-                            },
-                        }}
+                        sx={{ mb: 2, backgroundColor: primaryColor, color: '#fff', '&:hover': { backgroundColor: primaryDark } }}
                     >
                         Add Listing
                     </Button>
                 )}
 
-                {error && (
+                <Box sx={{ mb: 2 }}>
+                    <TextField
+                        fullWidth
+                        label="Search Listings"
+                        variant="outlined"
+                        value={searchQuery}
+                        onChange={(e) => {
+                            setSearchQuery(e.target.value);
+                            setPage(0);
+                        }}
+                    />
+                </Box>
+
+                {(listingsError || saveListingEndpoint.error || deleteListingEndpoint.error) && (
                     <Alert severity="error" sx={{ mb: 2 }}>
-                        {error}
+                        {listingsError || saveListingEndpoint.error || deleteListingEndpoint.error}
                     </Alert>
                 )}
 
-                {loading && (
-                    <Box
-                        sx={{
-                            display: 'flex',
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                            minHeight: 200,
-                            width: '100%',
-                        }}
-                    >
+                {(listingsLoading || saveListingEndpoint.isLoading || deleteListingEndpoint.isLoading) && (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 200 }}>
                         <CircularProgress />
                     </Box>
                 )}
 
-                {!loading && !error && (
-                    <TableContainer
-                        component={Paper}
-                        sx={{
-                            width: '100%',
-                            overflowX: 'auto',
-                        }}
-                    >
-                        <Table
-                            sx={{
-                                width: '100%',
-                                tableLayout: 'fixed',
-                            }}
-                            aria-label="listings table"
-                            size={isSmallScreen ? 'small' : 'medium'}
-                        >
-                            <TableHead>
-                                <TableRow sx={{ backgroundColor: primaryColor }}>
-                                    <TableCell sx={{ color: '#fff' }}>ID</TableCell>
-                                    <TableCell sx={{ color: '#fff' }}>Title</TableCell>
-                                    <TableCell sx={{ color: '#fff' }}>Address</TableCell>
-                                    <TableCell sx={{ color: '#fff' }}>Price</TableCell>
-                                    <TableCell sx={{ color: '#fff' }}>Property Type</TableCell>
-                                    <TableCell sx={{ color: '#fff' }}>Status</TableCell>
-                                    {userRole === 'admin' && (
+                {listingsData && (
+                    <>
+                        <TableContainer component={Paper} sx={{ width: '100%', overflowX: 'auto' }}>
+                            <Table sx={{ width: '100%', tableLayout: 'fixed' }} size={isSmallScreen ? 'small' : 'medium'}>
+                                <TableHead>
+                                    <TableRow sx={{ backgroundColor: primaryColor }}>
+                                        <TableCell sx={{ color: '#fff' }}>ID</TableCell>
+                                        <TableCell sx={{ color: '#fff' }}>Title</TableCell>
+                                        <TableCell sx={{ color: '#fff' }}>Address</TableCell>
+                                        <TableCell sx={{ color: '#fff' }}>Price</TableCell>
+                                        <TableCell sx={{ color: '#fff' }}>Property Type</TableCell>
+                                        <TableCell sx={{ color: '#fff' }}>Status</TableCell>
                                         <TableCell sx={{ color: '#fff' }} align="center">
                                             Actions
                                         </TableCell>
-                                    )}
-                                </TableRow>
-                            </TableHead>
-
-                            <TableBody>
-                                {listings.length === 0 ? (
-                                    <TableRow>
-                                        <TableCell colSpan={userRole === 'admin' ? 7 : 6} align="center">
-                                            No listings found.
-                                        </TableCell>
                                     </TableRow>
-                                ) : (
-                                    listings.map((listing) => (
-                                        <TableRow key={listing.id} hover>
+                                </TableHead>
+                                <TableBody>
+                                    {paginatedListings.length === 0 && (
+                                        <TableRow>
+                                            <TableCell colSpan={7} align="center">No listings found.</TableCell>
+                                        </TableRow>
+                                    )}
+                                    {paginatedListings.map((listing) => (
+                                        <TableRow key={listing.id} hover onClick={() => userRole !== 'admin' && openViewModal(listing)} sx={{ cursor: userRole !== 'admin' ? 'pointer' : 'default' }}>
                                             <TableCell>{listing.id}</TableCell>
                                             <TableCell>{listing.title}</TableCell>
                                             <TableCell>{listing.location_address}</TableCell>
                                             <TableCell>{listing.price.toLocaleString()}</TableCell>
                                             <TableCell>{listing.property_type}</TableCell>
                                             <TableCell>{listing.status}</TableCell>
-                                            {userRole === 'admin' && (
-                                                <TableCell align="center">
-                                                    <Button
-                                                        size="small"
-                                                        onClick={() => openEditModal(listing)}
-                                                        sx={{
-                                                            backgroundColor: primaryColor,
-                                                            color: '#fff',
-                                                            '&:hover': {
-                                                                backgroundColor: primaryDark,
-                                                            },
-                                                        }}
-                                                    >
-                                                        Edit
-                                                    </Button>
-                                                    <Button
-                                                        size="small"
-                                                        color="error"
-                                                        onClick={() => handleDelete(listing.id!)}
-                                                        sx={{ ml: 1 }}
-                                                    >
-                                                        Delete
-                                                    </Button>
-                                                </TableCell>
-                                            )}
+                                            <TableCell align="center">
+                                                {userRole === 'admin' ? (
+                                                    <Stack direction="row" spacing={1} justifyContent="center">
+                                                        <Button size="small" onClick={() => openEditModal(listing)} sx={{ backgroundColor: primaryColor, color: '#fff', '&:hover': { backgroundColor: primaryDark } }}>Edit</Button>
+                                                        <Button size="small" color="error" onClick={() => handleDelete(listing.id!)}>Delete</Button>
+                                                    </Stack>
+                                                ) : (
+                                                    <Button size="small" onClick={() => openViewModal(listing)}>View</Button>
+                                                )}
+                                            </TableCell>
                                         </TableRow>
-                                    ))
-                                )}
-                            </TableBody>
-                        </Table>
-                    </TableContainer>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </TableContainer>
+
+                        <TablePagination
+                            component="div"
+                            count={filteredListings.length}
+                            page={page}
+                            onPageChange={(e, newPage) => setPage(newPage)}
+                            rowsPerPage={rowsPerPage}
+                            onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+                        />
+                    </>
                 )}
             </Box>
 
-            <Modal open={modalOpen} onClose={handleModalClose} disableEscapeKeyDown={saving}>
-                <Box
-                    component="form"
-                    onSubmit={handleSubmit}
-                    sx={styleModal}
-                    noValidate
-                    autoComplete="off"
-                >
-                    <Box
-                        sx={{
-                            p: 2,
-                            borderBottom: '1px solid',
-                            borderColor: 'divider',
-                        }}
-                    >
-                        <Typography variant="h6" component="h2">
-                            {editMode ? 'Edit Listing' : 'Add Listing'}
-                        </Typography>
+            {/* --- Admin Add/Edit Modal --- */}
+            <Modal open={modalOpen} onClose={handleModalClose}>
+                <Box component="form" onSubmit={handleSubmit} sx={styleModal} noValidate autoComplete="off">
+                    <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
+                        <Typography variant="h6">{editMode ? 'Edit Listing' : 'Add Listing'}</Typography>
                     </Box>
-
-                    <Box
-                        sx={{
-                            p: 2,
-                            flexGrow: 1,
-                            overflowY: 'auto',
-                            minHeight: 0,
-                        }}
-                    >
-                        <TextField
-                            label="Title"
-                            fullWidth
-                            required
-                            value={currentListing.title}
-                            onChange={(e) => handleChange('title', e.target.value)}
-                            sx={{ mb: 2 }}
-                        />
-
-                        <TextField
-                            label="Description"
-                            fullWidth
-                            multiline
-                            minRows={2}
-                            value={currentListing.description || ''}
-                            onChange={(e) => handleChange('description', e.target.value)}
-                            sx={{ mb: 2 }}
-                        />
-
-                        <TextField
-                            label="Address"
-                            fullWidth
-                            required
-                            value={currentListing.location_address}
-                            onChange={(e) => handleChange('location_address', e.target.value)}
-                            sx={{ mb: 2 }}
-                        />
-
-                        <TextField
-                            label="Price"
-                            fullWidth
-                            required
-                            type="number"
-                            inputProps={{ min: 0 }}
-                            value={currentListing.price}
-                            onChange={(e) => handleChange('price', Number(e.target.value))}
-                            sx={{ mb: 2 }}
-                        />
-
+                    <Box sx={{ p: 2, flexGrow: 1, overflowY: 'auto', minHeight: 0 }}>
+                        <TextField label="Title" fullWidth required value={currentListing.title} onChange={(e) => handleChange('title', e.target.value)} sx={{ mb: 2 }} />
+                        <TextField label="Description" fullWidth multiline minRows={2} value={currentListing.description || ''} onChange={(e) => handleChange('description', e.target.value)} sx={{ mb: 2 }} />
+                        <TextField label="Address" fullWidth required value={currentListing.location_address} onChange={(e) => handleChange('location_address', e.target.value)} sx={{ mb: 2 }} />
+                        <TextField label="Price" fullWidth required type="number" inputProps={{ min: 0 }} value={currentListing.price} onChange={(e) => handleChange('price', Number(e.target.value))} sx={{ mb: 2 }} />
                         <FormControl fullWidth sx={{ mb: 2 }}>
-                            <InputLabel id="property-type-label">Property Type</InputLabel>
-                            <Select
-                                labelId="property-type-label"
-                                label="Property Type"
-                                value={currentListing.property_type}
-                                onChange={(e) =>
-                                    handleChange('property_type', e.target.value as ListingInterface['property_type'])
-                                }
-                            >
+                            <InputLabel>Property Type</InputLabel>
+                            <Select value={currentListing.property_type} onChange={(e) => handleChange('property_type', e.target.value as ListingInterface['property_type'])}>
                                 <MenuItem value="Apartment">Apartment</MenuItem>
                                 <MenuItem value="House">House</MenuItem>
                                 <MenuItem value="Commercial">Commercial</MenuItem>
                             </Select>
                         </FormControl>
-
                         <FormControl fullWidth sx={{ mb: 2 }}>
-                            <InputLabel id="status-label">Status</InputLabel>
-                            <Select
-                                labelId="status-label"
-                                label="Status"
-                                value={currentListing.status}
-                                onChange={(e) => handleChange('status', e.target.value as ListingInterface['status'])}
-                            >
+                            <InputLabel>Status</InputLabel>
+                            <Select value={currentListing.status} onChange={(e) => handleChange('status', e.target.value as ListingInterface['status'])}>
                                 <MenuItem value="For Sale">For Sale</MenuItem>
                                 <MenuItem value="For Rent">For Rent</MenuItem>
                             </Select>
                         </FormControl>
 
+                        {/* Image */}
                         <Box sx={{ mb: 2 }}>
                             <Typography variant="body2" mb={1}>
-                                {selectedImageFile
-                                    ? `New selected file: ${selectedImageFile.name}`
-                                    : imagesArray.length > 0
-                                    ? 'Current Image:'
-                                    : 'No image uploaded'}
+                                {selectedImageFile ? `New selected file: ${selectedImageFile.name}` : imagesArray.length > 0 ? 'Current Image:' : 'No image uploaded'}
                             </Typography>
-
-                            {previewUrl ? (
-                                <Box
-                                    component="img"
-                                    src={previewUrl}
-                                    alt="Selected"
-                                    sx={{ width: '100%', maxHeight: 200, objectFit: 'contain', borderRadius: 1 }}
-                                />
+                            {/* {previewUrl ? (
+                                <Box component="img" src={previewUrl} alt="Selected" sx={{ width: '100%', maxHeight: 200, objectFit: 'contain', borderRadius: 1 }} />
                             ) : imagesArray.length > 0 ? (
-                                <Box
-                                    component="img"
-                                    src={imagesArray[0]}
-                                    alt="Current"
-                                    sx={{ width: '100%', maxHeight: 200, objectFit: 'contain', borderRadius: 1 }}
-                                />
+                                <Box component="img" src={imagesArray[0]} alt="Current" sx={{ width: '100%', maxHeight: 200, objectFit: 'contain', borderRadius: 1 }} />
+                            ) : null} */}
+                            {previewUrl ? (
+                                <a href={previewUrl} target="_blank" rel="noopener noreferrer">
+                                    <Box component="img" src={previewUrl} alt="Selected" sx={{ width: '100%', maxHeight: 200, objectFit: 'contain', borderRadius: 1 }} />
+                                </a>
+                            ) : imagesArray.length > 0 ? (
+                                <a href={imagesArray[0]} target="_blank" rel="noopener noreferrer">
+                                    <Box component="img" src={imagesArray[0]} alt="Current" sx={{ width: '100%', maxHeight: 200, objectFit: 'contain', borderRadius: 1 }} />
+                                </a>
                             ) : null}
                         </Box>
-
                         <Button variant="outlined" component="label" sx={{ mb: 2 }}>
                             {selectedImageFile ? 'Change Image' : 'Upload Image'}
-                            <input
-                                type="file"
-                                hidden
-                                accept="image/*"
-                                onChange={(e) => {
-                                    if (e.target.files && e.target.files.length > 0) {
-                                        setSelectedImageFile(e.target.files[0]);
-                                    }
-                                }}
-                            />
+                            <input type="file" hidden accept="image/*" onChange={(e) => e.target.files && setSelectedImageFile(e.target.files[0])} />
                         </Button>
+                    </Box>
+                    <Box sx={{ p: 2, borderTop: '1px solid', borderColor: 'divider', display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+                        <Button onClick={handleModalClose}>Cancel</Button>
+                        <Button type="submit" variant="contained" sx={{ backgroundColor: primaryColor, color: '#fff', '&:hover': { backgroundColor: primaryDark } }}>
+                            {editMode ? 'Update' : 'Add'}
+                        </Button>
+                    </Box>
+                </Box>
+            </Modal>
 
-                        {error && (
-                            <Alert severity="error" sx={{ mb: 2 }}>
-                                {error}
-                            </Alert>
+            {/* --- User View-Only Modal --- */}
+            <Modal open={viewModalOpen} onClose={handleViewModalClose}>
+                <Box sx={styleModal}>
+                    <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
+                        <Typography variant="h6">Listing Details</Typography>
+                    </Box>
+                    <Box sx={{ p: 2, flexGrow: 1, overflowY: 'auto', minHeight: 0 }}>
+                        <Typography variant="subtitle2" mb={1}>Title:</Typography>
+                        <Typography variant="body1" mb={2}>{viewListing?.title}</Typography>
+
+                        <Typography variant="subtitle2" mb={1}>Description:</Typography>
+                        <Typography variant="body1" mb={2}>{viewListing?.description || '-'}</Typography>
+
+                        <Typography variant="subtitle2" mb={1}>Address:</Typography>
+                        <Typography variant="body1" mb={2}>{viewListing?.location_address}</Typography>
+
+                        <Typography variant="subtitle2" mb={1}>Price:</Typography>
+                        <Typography variant="body1" mb={2}>{viewListing?.price.toLocaleString()}</Typography>
+
+                        <Typography variant="subtitle2" mb={1}>Property Type:</Typography>
+                        <Typography variant="body1" mb={2}>{viewListing?.property_type}</Typography>
+
+                        <Typography variant="subtitle2" mb={1}>Status:</Typography>
+                        <Typography variant="body1" mb={2}>{viewListing?.status}</Typography>
+
+                        {viewImages.length > 0 ? (
+                            <Box component="img" src={viewImages[0]} alt="Listing" sx={{ width: '100%', maxHeight: 200, objectFit: 'contain', borderRadius: 1 }} />
+                        ) : (
+                            <Typography variant="body2">No image uploaded</Typography>
                         )}
                     </Box>
-
-                    <Box
-                        sx={{
-                            p: 2,
-                            borderTop: '1px solid',
-                            borderColor: 'divider',
-                            display: 'flex',
-                            justifyContent: 'flex-end',
-                            gap: 1,
-                        }}
-                    >
-                        <Button onClick={handleModalClose} disabled={saving}>
-                            Cancel
-                        </Button>
-                        <Button
-                            type="submit"
-                            variant="contained"
-                            disabled={saving}
-                            sx={{
-                                backgroundColor: primaryColor,
-                                color: '#fff',
-                                '&:hover': {
-                                    backgroundColor: primaryDark,
-                                },
-                            }}
-                        >
-                            {saving ? 'Saving...' : editMode ? 'Update' : 'Add'}
-                        </Button>
+                    <Box sx={{ p: 2, borderTop: '1px solid', borderColor: 'divider', display: 'flex', justifyContent: 'flex-end' }}>
+                        <Button onClick={handleViewModalClose}>Close</Button>
                     </Box>
                 </Box>
             </Modal>
