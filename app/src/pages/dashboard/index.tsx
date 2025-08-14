@@ -82,6 +82,12 @@ const Index = ({
     const [page, setPage] = useState(0);
     const [rowsPerPage, setRowsPerPage] = useState(5);
 
+    // --- Filters ---
+    const [filterMinPrice, setFilterMinPrice] = useState<number | ''>('');
+    const [filterMaxPrice, setFilterMaxPrice] = useState<number | ''>('');
+    const [filterPropertyType, setFilterPropertyType] = useState<ListingInterface['property_type'] | ''>('');
+    const [filterStatus, setFilterStatus] = useState<ListingInterface['status'] | ''>('');
+
     // --- View-only modal ---
     const [viewModalOpen, setViewModalOpen] = useState(false);
     const [viewListing, setViewListing] = useState<ListingInterface | null>(null);
@@ -197,14 +203,29 @@ const Index = ({
 
     const filteredListings = useMemo(() => {
         if (!listingsData?.listings) return [];
-        return listingsData.listings.filter((listing) =>
-            listing.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            listing.location_address.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            listing.property_type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            listing.status.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            listing.price.toString().includes(searchQuery)
-        );
-    }, [listingsData, searchQuery]);
+
+        return listingsData.listings.filter((listing) => {
+            // Text search
+            const matchesSearch =
+                listing.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                listing.location_address.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                listing.property_type.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                listing.status.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                listing.price.toString().includes(searchQuery);
+
+            // Price filter
+            const matchesMinPrice = filterMinPrice === '' || listing.price >= filterMinPrice;
+            const matchesMaxPrice = filterMaxPrice === '' || listing.price <= filterMaxPrice;
+
+            // Property type filter
+            const matchesPropertyType = filterPropertyType === '' || listing.property_type === filterPropertyType;
+
+            // Status filter
+            const matchesStatus = filterStatus === '' || listing.status === filterStatus;
+
+            return matchesSearch && matchesMinPrice && matchesMaxPrice && matchesPropertyType && matchesStatus;
+        });
+    }, [listingsData, searchQuery, filterMinPrice, filterMaxPrice, filterPropertyType, filterStatus]);
 
     const paginatedListings = useMemo(() => {
         const start = page * rowsPerPage;
@@ -301,6 +322,47 @@ const Index = ({
                     />
                 </Box>
 
+                {/* --- Filters --- */}
+                <Box sx={{ mb: 2, display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+                    <TextField
+                        label="Min Price"
+                        type="number"
+                        value={filterMinPrice}
+                        onChange={(e) => setFilterMinPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                        sx={{ minWidth: 120 }}
+                    />
+                    <TextField
+                        label="Max Price"
+                        type="number"
+                        value={filterMaxPrice}
+                        onChange={(e) => setFilterMaxPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                        sx={{ minWidth: 120 }}
+                    />
+                    <FormControl sx={{ minWidth: 150 }}>
+                        <InputLabel>Property Type</InputLabel>
+                        <Select
+                            value={filterPropertyType}
+                            onChange={(e) => setFilterPropertyType(e.target.value as ListingInterface['property_type'] | '')}
+                        >
+                            <MenuItem value="">All</MenuItem>  {/* <-- default displayed as All */}
+                            <MenuItem value="Apartment">Apartment</MenuItem>
+                            <MenuItem value="House">House</MenuItem>
+                            <MenuItem value="Commercial">Commercial</MenuItem>
+                        </Select>
+                    </FormControl>
+                    <FormControl sx={{ minWidth: 150 }}>
+                        <InputLabel>Status</InputLabel>
+                        <Select
+                            value={filterStatus}
+                            onChange={(e) => setFilterStatus(e.target.value as ListingInterface['status'] | '')}
+                        >
+                            <MenuItem value="">All</MenuItem>  {/* <-- default displayed as All */}
+                            <MenuItem value="For Sale">For Sale</MenuItem>
+                            <MenuItem value="For Rent">For Rent</MenuItem>
+                        </Select>
+                    </FormControl>
+                </Box>
+
                 {(listingsError || saveListingEndpoint.error || deleteListingEndpoint.error) && (
                     <Alert severity="error" sx={{ mb: 2 }}>
                         {listingsError || saveListingEndpoint.error || deleteListingEndpoint.error}
@@ -364,7 +426,7 @@ const Index = ({
                             component="div"
                             count={filteredListings.length}
                             page={page}
-                            onPageChange={(e, newPage) => setPage(newPage)}
+                            onPageChange={(_, newPage) => setPage(newPage)}
                             rowsPerPage={rowsPerPage}
                             onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
                         />
@@ -404,67 +466,56 @@ const Index = ({
                             <Typography variant="body2" mb={1}>
                                 {selectedImageFile ? `New selected file: ${selectedImageFile.name}` : imagesArray.length > 0 ? 'Current Image:' : 'No image uploaded'}
                             </Typography>
-                            {/* {previewUrl ? (
-                                <Box component="img" src={previewUrl} alt="Selected" sx={{ width: '100%', maxHeight: 200, objectFit: 'contain', borderRadius: 1 }} />
-                            ) : imagesArray.length > 0 ? (
-                                <Box component="img" src={imagesArray[0]} alt="Current" sx={{ width: '100%', maxHeight: 200, objectFit: 'contain', borderRadius: 1 }} />
-                            ) : null} */}
                             {previewUrl ? (
                                 <a href={previewUrl} target="_blank" rel="noopener noreferrer">
-                                    <Box component="img" src={previewUrl} alt="Selected" sx={{ width: '100%', maxHeight: 200, objectFit: 'contain', borderRadius: 1 }} />
+                                    <img src={previewUrl} alt="Preview" style={{ maxWidth: '100%', maxHeight: 150, marginBottom: 8 }} />
                                 </a>
                             ) : imagesArray.length > 0 ? (
                                 <a href={imagesArray[0]} target="_blank" rel="noopener noreferrer">
-                                    <Box component="img" src={imagesArray[0]} alt="Current" sx={{ width: '100%', maxHeight: 200, objectFit: 'contain', borderRadius: 1 }} />
+                                    <img src={imagesArray[0]} alt="Current" style={{ maxWidth: '100%', maxHeight: 150, marginBottom: 8 }} />
                                 </a>
                             ) : null}
+                            <Button variant="contained" component="label">
+                                Upload Image
+                                <input type="file" hidden onChange={(e) => setSelectedImageFile(e.target.files?.[0] || null)} />
+                            </Button>
                         </Box>
-                        <Button variant="outlined" component="label" sx={{ mb: 2 }}>
-                            {selectedImageFile ? 'Change Image' : 'Upload Image'}
-                            <input type="file" hidden accept="image/*" onChange={(e) => e.target.files && setSelectedImageFile(e.target.files[0])} />
-                        </Button>
                     </Box>
                     <Box sx={{ p: 2, borderTop: '1px solid', borderColor: 'divider', display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
                         <Button onClick={handleModalClose}>Cancel</Button>
-                        <Button type="submit" variant="contained" sx={{ backgroundColor: primaryColor, color: '#fff', '&:hover': { backgroundColor: primaryDark } }}>
-                            {editMode ? 'Update' : 'Add'}
-                        </Button>
+                        <Button type="submit" variant="contained" sx={{ backgroundColor: primaryColor, color: '#fff', '&:hover': { backgroundColor: primaryDark } }}>{editMode ? 'Update' : 'Save'}</Button>
                     </Box>
                 </Box>
             </Modal>
 
-            {/* --- User View-Only Modal --- */}
+            {/* --- View-only Modal --- */}
             <Modal open={viewModalOpen} onClose={handleViewModalClose}>
                 <Box sx={styleModal}>
                     <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
                         <Typography variant="h6">Listing Details</Typography>
                     </Box>
                     <Box sx={{ p: 2, flexGrow: 1, overflowY: 'auto', minHeight: 0 }}>
-                        <Typography variant="subtitle2" mb={1}>Title:</Typography>
-                        <Typography variant="body1" mb={2}>{viewListing?.title}</Typography>
-
-                        <Typography variant="subtitle2" mb={1}>Description:</Typography>
-                        <Typography variant="body1" mb={2}>{viewListing?.description || '-'}</Typography>
-
-                        <Typography variant="subtitle2" mb={1}>Address:</Typography>
-                        <Typography variant="body1" mb={2}>{viewListing?.location_address}</Typography>
-
-                        <Typography variant="subtitle2" mb={1}>Price:</Typography>
-                        <Typography variant="body1" mb={2}>{viewListing?.price.toLocaleString()}</Typography>
-
-                        <Typography variant="subtitle2" mb={1}>Property Type:</Typography>
-                        <Typography variant="body1" mb={2}>{viewListing?.property_type}</Typography>
-
-                        <Typography variant="subtitle2" mb={1}>Status:</Typography>
-                        <Typography variant="body1" mb={2}>{viewListing?.status}</Typography>
-
-                        {viewImages.length > 0 ? (
-                            <Box component="img" src={viewImages[0]} alt="Listing" sx={{ width: '100%', maxHeight: 200, objectFit: 'contain', borderRadius: 1 }} />
-                        ) : (
-                            <Typography variant="body2">No image uploaded</Typography>
+                        {viewListing && (
+                            <>
+                                <Typography variant="subtitle1"><strong>Title:</strong> {viewListing.title}</Typography>
+                                <Typography variant="subtitle2"><strong>Description:</strong> {viewListing.description}</Typography>
+                                <Typography variant="subtitle2"><strong>Address:</strong> {viewListing.location_address}</Typography>
+                                <Typography variant="subtitle2"><strong>Price:</strong> {viewListing.price.toLocaleString()}</Typography>
+                                <Typography variant="subtitle2"><strong>Property Type:</strong> {viewListing.property_type}</Typography>
+                                <Typography variant="subtitle2"><strong>Status:</strong> {viewListing.status}</Typography>
+                                {viewImages.length > 0 && (
+                                    <Box mt={2}>
+                                        {viewImages.map((img, idx) => (
+                                            <a key={idx} href={img} target="_blank" rel="noopener noreferrer">
+                                                <img src={img} alt={`Listing ${idx}`} style={{ maxWidth: '100%', maxHeight: 150, marginBottom: 8 }} />
+                                            </a>
+                                        ))}
+                                    </Box>
+                                )}
+                            </>
                         )}
                     </Box>
-                    <Box sx={{ p: 2, borderTop: '1px solid', borderColor: 'divider', display: 'flex', justifyContent: 'flex-end' }}>
+                    <Box sx={{ p: 2, display: 'flex', justifyContent: 'flex-end' }}>
                         <Button onClick={handleViewModalClose}>Close</Button>
                     </Box>
                 </Box>
