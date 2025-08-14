@@ -145,7 +145,7 @@ const Index = ({
 
     useEffect(() => {
         fetchListings();
-    }, []);
+    }, [fetchListings])
 
     const openAddModal = () => {
         setEditMode(false);
