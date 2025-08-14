@@ -1,8 +1,6 @@
 import {
     Box,
     Button,
-    Checkbox,
-    FormControlLabel,
     TextField,
     Typography,
     Link,
@@ -12,12 +10,12 @@ import {
     Alert,
     CircularProgress,
 } from '@mui/material';
-import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
+import PersonAddAltIcon from '@mui/icons-material/PersonAddAlt';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useEndpoint from '../../api';
 
-interface LoginProps {
+interface RegisterProps {
     primaryColor?: string;
     backgroundColor?: string;
     textColor?: string;
@@ -27,74 +25,44 @@ interface User {
     id: string;
     email: string;
     role: string;
-    phone?: string;
     full_name?: string;
     avatar?: string | null;
 }
 
-interface LoginResponse {
+interface RegisterResponse {
     access_token?: string;
     user?: User;
     error?: string;
     message?: string;
 }
 
-interface LoginPayload {
+interface RegisterPayload {
     username: string;
     password: string;
-    rememberMe: boolean;
+    full_name: string;
 }
 
-const Login = ({
+const Register = ({
     primaryColor = '#09d646',
     backgroundColor = 'background.default',
     textColor = 'text.primary',
-}: LoginProps) => {
+}: RegisterProps) => {
     const [username, setUsername] = useState('');
+    const [fullName, setFullName] = useState('');
     const [password, setPassword] = useState('');
-    const [rememberMe, setRememberMe] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
     const navigate = useNavigate();
 
-    const { data: response, error: apiError, isLoading, execute } = useEndpoint<LoginResponse, LoginPayload>({
-        url: '/api/login',
+    const { data: response, error: apiError, isLoading, execute } = useEndpoint<RegisterResponse, RegisterPayload>({
+        url: '/api/register',
         method: 'POST',
-        body: { username: username.trim(), password, rememberMe },
+        body: { username: username.trim(), password, full_name: fullName.trim() },
     });
-
-    useEffect(() => {
-        if (response) {
-            if (response.access_token) {
-                localStorage.setItem('auth_token', response.access_token);
-            }
-            if (response.user) {
-                // Derive full_name from email if not provided
-                const fullName =
-                    response.user.full_name ||
-                    response.user.email.split('@')[0];
-
-                // Convert role: 'authenticated' => 'user', else keep as is (e.g. 'admin')
-                const role =
-                    response.user.role === 'authenticated' ? 'user' : response.user.role;
-
-                const userWithFullName: User = {
-                    ...response.user,
-                    full_name: fullName,
-                    role,
-                };
-
-                localStorage.setItem('user', JSON.stringify(userWithFullName));
-                navigate('/dashboard', { replace: true });
-            }
-        }
-        if (apiError) {
-            setErrors({ api: apiError });
-        }
-    }, [response, apiError, navigate]);
 
     const validate = () => {
         const newErrors: Record<string, string> = {};
         if (!username.trim()) newErrors.username = 'Username is required';
+        if (!fullName.trim()) newErrors.full_name = 'Full name is required';
         if (!password) newErrors.password = 'Password is required';
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
@@ -103,10 +71,18 @@ const Login = ({
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!validate()) return;
-
         setErrors({});
         await execute();
     };
+
+    useEffect(() => {
+        if (response?.user) {
+            if (response.access_token) localStorage.setItem('auth_token', response.access_token);
+            localStorage.setItem('user', JSON.stringify(response.user));
+            navigate('/dashboard', { replace: true });
+        }
+        if (apiError) setErrors({ api: apiError });
+    }, [response, apiError, navigate]);
 
     return (
         <>
@@ -146,13 +122,13 @@ const Login = ({
                                 mb: 1,
                             }}
                         >
-                            <LockOutlinedIcon />
+                            <PersonAddAltIcon />
                         </Avatar>
                         <Typography variant="h5" component="h1" fontWeight="bold" color={textColor}>
-                            Sign in
+                            Sign Up
                         </Typography>
                         <Typography variant="body2" color="text.secondary" mt={1}>
-                            Welcome back! Please enter your details.
+                            Create an account to get started.
                         </Typography>
                     </Box>
 
@@ -162,29 +138,43 @@ const Login = ({
                         </Alert>
                     )}
 
+                    {/* Username */}
                     <TextField
                         fullWidth
                         required
                         margin="normal"
-                        label="Username / Email"
+                        label="Username"
                         variant="outlined"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
                         error={!!errors.username}
                         helperText={errors.username}
                         disabled={isLoading}
-                        autoComplete="username"
                         sx={{
-                            '& label.Mui-focused': {
-                                color: primaryColor,
-                            },
-                            '& .MuiOutlinedInput-root': {
-                                '&.Mui-focused fieldset': {
-                                    borderColor: primaryColor,
-                                },
-                            },
+                            '& label.Mui-focused': { color: primaryColor },
+                            '& .MuiOutlinedInput-root.Mui-focused fieldset': { borderColor: primaryColor },
                         }}
                     />
+
+                    {/* Full Name */}
+                    <TextField
+                        fullWidth
+                        required
+                        margin="normal"
+                        label="Full Name"
+                        variant="outlined"
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        error={!!errors.full_name}
+                        helperText={errors.full_name}
+                        disabled={isLoading}
+                        sx={{
+                            '& label.Mui-focused': { color: primaryColor },
+                            '& .MuiOutlinedInput-root.Mui-focused fieldset': { borderColor: primaryColor },
+                        }}
+                    />
+
+                    {/* Password */}
                     <TextField
                         fullWidth
                         required
@@ -197,30 +187,12 @@ const Login = ({
                         error={!!errors.password}
                         helperText={errors.password}
                         disabled={isLoading}
-                        autoComplete="current-password"
                         sx={{
-                            '& label.Mui-focused': {
-                                color: primaryColor,
-                            },
-                            '& .MuiOutlinedInput-root': {
-                                '&.Mui-focused fieldset': {
-                                    borderColor: primaryColor,
-                                },
-                            },
+                            '& label.Mui-focused': { color: primaryColor },
+                            '& .MuiOutlinedInput-root.Mui-focused fieldset': { borderColor: primaryColor },
                         }}
                     />
-                    <FormControlLabel
-                        control={
-                            <Checkbox
-                                color="primary"
-                                checked={rememberMe}
-                                onChange={(e) => setRememberMe(e.target.checked)}
-                                disabled={isLoading}
-                            />
-                        }
-                        label="Remember me"
-                        sx={{ mt: 1, color: textColor }}
-                    />
+
                     <Button
                         fullWidth
                         type="submit"
@@ -237,7 +209,7 @@ const Login = ({
                             },
                         }}
                     >
-                        {isLoading ? <CircularProgress size={24} color="inherit" /> : 'SIGN IN'}
+                        {isLoading ? <CircularProgress size={24} color="inherit" /> : 'SIGN UP'}
                     </Button>
 
                     <Box
@@ -247,8 +219,8 @@ const Login = ({
                             mt: 2,
                         }}
                     >
-                        <Link href="/registration" variant="body2" color={textColor}>
-                            Don't have an account? Sign Up
+                        <Link href="/login" variant="body2" color={textColor}>
+                            Return to login
                         </Link>
                     </Box>
                 </Paper>
@@ -257,4 +229,4 @@ const Login = ({
     );
 };
 
-export default Login;
+export default Register;

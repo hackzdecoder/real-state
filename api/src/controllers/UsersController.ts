@@ -4,44 +4,36 @@ import { supabase } from '../config/client';
 import { User, UserInterface } from '../models/User';
 
 export class UserController {
-    static async register(request: Request, response: Response) {
-        const { username, password, full_name } = request.body;
+     static async register(req: Request, res: Response) {
+        let { username, password, full_name } = req.body;
 
-        if ((!username || username.trim() === '') &&
-            (!password || password.trim() === '') &&
-            (!full_name || full_name.trim() === '')
-        ) {
-            return response.status(400).json({ error: 'Username, Password or Full name is required' });
+        if (!username?.trim() || !password?.trim() || !full_name?.trim()) {
+            return res.status(400).json({ error: 'Username/email, password and full name are required' });
         }
-        if (!username || username.trim() === '') {
-            return response.status(400).json({ error: 'Username is required' });
-        }
-        if (!password || password.trim() === '') {
-            return response.status(400).json({ error: 'Password is required' });
-        }
-        if (!full_name || full_name.trim() === '') {
-            return response.status(400).json({ error: 'Full name is required' });
-        }
+
+        username = username.trim();
+        password = password.trim();
+        full_name = full_name.trim();
 
         try {
-            // Check if username exists
-            const existingUser = await User.findByUsername(username);
-            if (existingUser) return response.status(409).json({ error: 'Username already used' });
+            // Save the user input as-is in the database
+            const storedUsername = username;
 
-            const email = `${username}@yourapp.local`;
+            // Generate a valid email for Supabase
+            const emailForSupabase = username.includes('@') ? username : `${username}@yourapp.local`;
 
-            // Create user in Supabase Auth (email_confirm: true disables email verification)
-            const { data, error } = await supabase.auth.admin.createUser({
-                email,
+            // Sign up using anon key
+            const { data, error } = await supabase.auth.signUp({
+                email: emailForSupabase,
                 password,
-                email_confirm: true,
             });
 
-            if (error) return response.status(400).json({ error: error.message });
+            if (error) return res.status(400).json({ error: error.message });
 
+            // Create user record in your users table
             const newUser: UserInterface = {
-                id: data.user.id,
-                username,
+                id: data.user?.id || '',
+                username: storedUsername, // save exactly what the user entered
                 full_name,
                 role: 'user',
                 avatar: null,
@@ -49,13 +41,13 @@ export class UserController {
 
             await User.create(newUser);
 
-            return response.json({
+            return res.json({
                 message: 'Successfully Registered',
-                user: data.user,
+                user: newUser,
             });
 
         } catch (err: any) {
-            return response.status(500).json({ error: err.message || 'Internal server error' });
+            return res.status(500).json({ error: err.message || 'Internal server error' });
         }
     }
 
