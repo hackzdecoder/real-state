@@ -24,8 +24,17 @@ import {
     TablePagination,
 } from '@mui/material';
 import { darken } from '@mui/material';
+
+import AddIcon from '@mui/icons-material/Add';
+import SaveIcon from '@mui/icons-material/Save';
+import CancelIcon from '@mui/icons-material/Cancel';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+
 import useEndpoint from '../../api';
 import type { EndpointResponse } from '../../api';
+
 
 interface ListingInterface {
     id?: string;
@@ -144,8 +153,12 @@ const Index = ({
     });
 
     useEffect(() => {
-        fetchListings();
-    }, [fetchListings])
+        const fetchData = async () => {
+            await fetchListings();
+        };
+        fetchData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const openAddModal = () => {
         setEditMode(false);
@@ -302,6 +315,7 @@ const Index = ({
                 {userRole === 'admin' && (
                     <Button
                         variant="contained"
+                        startIcon={<AddIcon />}
                         onClick={openAddModal}
                         sx={{ mb: 2, backgroundColor: primaryColor, color: '#fff', '&:hover': { backgroundColor: primaryDark } }}
                     >
@@ -409,11 +423,31 @@ const Index = ({
                                             <TableCell align="center">
                                                 {userRole === 'admin' ? (
                                                     <Stack direction="row" spacing={1} justifyContent="center">
-                                                        <Button size="small" onClick={() => openEditModal(listing)} sx={{ backgroundColor: primaryColor, color: '#fff', '&:hover': { backgroundColor: primaryDark } }}>Edit</Button>
-                                                        <Button size="small" color="error" onClick={() => handleDelete(listing.id!)}>Delete</Button>
+                                                        <Button
+                                                            size="small"
+                                                            startIcon={<EditIcon />}
+                                                            onClick={() => openEditModal(listing)}
+                                                            sx={{ backgroundColor: primaryColor, color: '#fff', '&:hover': { backgroundColor: primaryDark } }}
+                                                        >
+                                                            Edit
+                                                        </Button>
+                                                        <Button
+                                                            size="small"
+                                                            startIcon={<DeleteIcon />}
+                                                            color="error"
+                                                            onClick={() => handleDelete(listing.id!)}
+                                                        >
+                                                            Delete
+                                                        </Button>
                                                     </Stack>
                                                 ) : (
-                                                    <Button size="small" onClick={() => openViewModal(listing)}>View</Button>
+                                                    <Button
+                                                        size="small"
+                                                        startIcon={<VisibilityIcon />}
+                                                        onClick={() => openViewModal(listing)}
+                                                    >
+                                                        View
+                                                    </Button>
                                                 )}
                                             </TableCell>
                                         </TableRow>
@@ -436,54 +470,153 @@ const Index = ({
 
             {/* --- Admin Add/Edit Modal --- */}
             <Modal open={modalOpen} onClose={handleModalClose}>
-                <Box component="form" onSubmit={handleSubmit} sx={styleModal} noValidate autoComplete="off">
+                <Box
+                    component="form"
+                    onSubmit={handleSubmit}
+                    sx={{
+                        ...styleModal,
+                        p: 0,
+                        maxHeight: '90vh',
+                        display: 'flex',
+                        flexDirection: 'column',
+                    }}
+                    noValidate
+                    autoComplete="off"
+                >
+                    {/* Header */}
                     <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
                         <Typography variant="h6">{editMode ? 'Edit Listing' : 'Add Listing'}</Typography>
                     </Box>
-                    <Box sx={{ p: 2, flexGrow: 1, overflowY: 'auto', minHeight: 0 }}>
-                        <TextField label="Title" fullWidth required value={currentListing.title} onChange={(e) => handleChange('title', e.target.value)} sx={{ mb: 2 }} />
-                        <TextField label="Description" fullWidth multiline minRows={2} value={currentListing.description || ''} onChange={(e) => handleChange('description', e.target.value)} sx={{ mb: 2 }} />
-                        <TextField label="Address" fullWidth required value={currentListing.location_address} onChange={(e) => handleChange('location_address', e.target.value)} sx={{ mb: 2 }} />
-                        <TextField label="Price" fullWidth required type="number" inputProps={{ min: 0 }} value={currentListing.price} onChange={(e) => handleChange('price', Number(e.target.value))} sx={{ mb: 2 }} />
-                        <FormControl fullWidth sx={{ mb: 2 }}>
+
+                    {/* Body */}
+                    <Box sx={{ p: 2, flexGrow: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <TextField
+                            label="Title"
+                            fullWidth
+                            required
+                            value={currentListing.title}
+                            onChange={(e) => handleChange('title', e.target.value)}
+                        />
+                        <TextField
+                            label="Description"
+                            fullWidth
+                            multiline
+                            minRows={2}
+                            value={currentListing.description || ''}
+                            onChange={(e) => handleChange('description', e.target.value)}
+                        />
+                        <TextField
+                            label="Address"
+                            fullWidth
+                            required
+                            value={currentListing.location_address}
+                            onChange={(e) => handleChange('location_address', e.target.value)}
+                        />
+                        <TextField
+                            label="Price"
+                            fullWidth
+                            required
+                            type="number"
+                            inputProps={{ min: 0 }}
+                            value={currentListing.price}
+                            onChange={(e) => handleChange('price', Number(e.target.value))}
+                        />
+                        <FormControl fullWidth>
                             <InputLabel>Property Type</InputLabel>
-                            <Select value={currentListing.property_type} onChange={(e) => handleChange('property_type', e.target.value as ListingInterface['property_type'])}>
+                            <Select
+                                value={currentListing.property_type}
+                                onChange={(e) => handleChange('property_type', e.target.value as ListingInterface['property_type'])}
+                            >
                                 <MenuItem value="Apartment">Apartment</MenuItem>
                                 <MenuItem value="House">House</MenuItem>
                                 <MenuItem value="Commercial">Commercial</MenuItem>
                             </Select>
                         </FormControl>
-                        <FormControl fullWidth sx={{ mb: 2 }}>
+                        <FormControl fullWidth>
                             <InputLabel>Status</InputLabel>
-                            <Select value={currentListing.status} onChange={(e) => handleChange('status', e.target.value as ListingInterface['status'])}>
+                            <Select
+                                value={currentListing.status}
+                                onChange={(e) => handleChange('status', e.target.value as ListingInterface['status'])}
+                            >
                                 <MenuItem value="For Sale">For Sale</MenuItem>
                                 <MenuItem value="For Rent">For Rent</MenuItem>
                             </Select>
                         </FormControl>
 
-                        {/* Image */}
-                        <Box sx={{ mb: 2 }}>
-                            <Typography variant="body2" mb={1}>
-                                {selectedImageFile ? `New selected file: ${selectedImageFile.name}` : imagesArray.length > 0 ? 'Current Image:' : 'No image uploaded'}
+                        {/* Image Upload Section */}
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                            <Typography variant="body2">
+                                {selectedImageFile
+                                    ? `New selected file: ${selectedImageFile.name}`
+                                    : imagesArray.length > 0
+                                        ? 'Current Image:'
+                                        : 'No image uploaded'}
                             </Typography>
+
+                            {/* Preview Image - full width */}
                             {previewUrl ? (
                                 <a href={previewUrl} target="_blank" rel="noopener noreferrer">
-                                    <img src={previewUrl} alt="Preview" style={{ maxWidth: '100%', maxHeight: 150, marginBottom: 8 }} />
+                                    <img
+                                        src={previewUrl}
+                                        alt="Preview"
+                                        style={{ width: '100%', height: 'auto', borderRadius: 4, marginBottom: 8 }}
+                                    />
                                 </a>
                             ) : imagesArray.length > 0 ? (
                                 <a href={imagesArray[0]} target="_blank" rel="noopener noreferrer">
-                                    <img src={imagesArray[0]} alt="Current" style={{ maxWidth: '100%', maxHeight: 150, marginBottom: 8 }} />
+                                    <img
+                                        src={imagesArray[0]}
+                                        alt="Current"
+                                        style={{ width: '100%', height: 'auto', borderRadius: 4, marginBottom: 8 }}
+                                    />
                                 </a>
                             ) : null}
-                            <Button variant="contained" component="label">
-                                Upload Image
-                                <input type="file" hidden onChange={(e) => setSelectedImageFile(e.target.files?.[0] || null)} />
-                            </Button>
+
+                            {/* Upload Button */}
+                            <Box sx={{ display: 'flex', justifyContent: 'flex-start', mt: 1 }}>
+                                <Button
+                                    variant="contained"
+                                    component="label"
+                                    sx={{ color: '#fff', backgroundColor: primaryColor, '&:hover': { backgroundColor: primaryDark } }}
+                                >
+                                    Upload Image
+                                    <input
+                                        type="file"
+                                        hidden
+                                        onChange={(e) => setSelectedImageFile(e.target.files?.[0] || null)}
+                                    />
+                                </Button>
+                            </Box>
                         </Box>
                     </Box>
-                    <Box sx={{ p: 2, borderTop: '1px solid', borderColor: 'divider', display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-                        <Button onClick={handleModalClose}>Cancel</Button>
-                        <Button type="submit" variant="contained" sx={{ backgroundColor: primaryColor, color: '#fff', '&:hover': { backgroundColor: primaryDark } }}>{editMode ? 'Update' : 'Save'}</Button>
+
+                    {/* Footer */}
+                    <Box
+                        sx={{
+                            p: 2,
+                            borderTop: '1px solid',
+                            borderColor: 'divider',
+                            display: 'flex',
+                            justifyContent: 'flex-end',
+                            gap: 1,
+                        }}
+                    >
+                        <Button
+                            type="submit"
+                            startIcon={<SaveIcon />}
+                            variant="contained"
+                            sx={{ backgroundColor: primaryColor, color: '#fff', '&:hover': { backgroundColor: primaryDark } }}
+                        >
+                            {editMode ? 'Update' : 'Save'}
+                        </Button>
+                        <Button
+                            type="button"
+                            startIcon={<CancelIcon />}
+                            onClick={handleModalClose}
+                            sx={{ color: '#fff', backgroundColor: '#888', '&:hover': { backgroundColor: '#666' } }}
+                        >
+                            Cancel
+                        </Button>
                     </Box>
                 </Box>
             </Modal>
@@ -494,7 +627,7 @@ const Index = ({
                     <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
                         <Typography variant="h6">Listing Details</Typography>
                     </Box>
-                    <Box sx={{ p: 2, flexGrow: 1, overflowY: 'auto', minHeight: 0 }}>
+                    <Box sx={{ p: 2, flexGrow: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 1 }}>
                         {viewListing && (
                             <>
                                 <Typography variant="subtitle1"><strong>Title:</strong> {viewListing.title}</Typography>
@@ -503,11 +636,17 @@ const Index = ({
                                 <Typography variant="subtitle2"><strong>Price:</strong> {viewListing.price.toLocaleString()}</Typography>
                                 <Typography variant="subtitle2"><strong>Property Type:</strong> {viewListing.property_type}</Typography>
                                 <Typography variant="subtitle2"><strong>Status:</strong> {viewListing.status}</Typography>
+
+                                {/* Images */}
                                 {viewImages.length > 0 && (
-                                    <Box mt={2}>
+                                    <Box mt={1} sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                                         {viewImages.map((img, idx) => (
                                             <a key={idx} href={img} target="_blank" rel="noopener noreferrer">
-                                                <img src={img} alt={`Listing ${idx}`} style={{ maxWidth: '100%', maxHeight: 150, marginBottom: 8 }} />
+                                                <img
+                                                    src={img}
+                                                    alt={`Listing ${idx}`}
+                                                    style={{ width: '100%', height: 'auto', borderRadius: 4 }}
+                                                />
                                             </a>
                                         ))}
                                     </Box>
@@ -515,8 +654,25 @@ const Index = ({
                             </>
                         )}
                     </Box>
-                    <Box sx={{ p: 2, display: 'flex', justifyContent: 'flex-end' }}>
-                        <Button onClick={handleViewModalClose}>Close</Button>
+
+                    <Box
+                        sx={{
+                            p: 2,
+                            borderTop: '1px solid',
+                            borderColor: 'divider',
+                            display: 'flex',
+                            justifyContent: 'flex-end',
+                            gap: 1,
+                        }}
+                    >
+                        <Button
+                            type="button"
+                            startIcon={<CancelIcon />}
+                            onClick={handleViewModalClose}
+                            sx={{ color: '#fff', backgroundColor: '#888', '&:hover': { backgroundColor: '#666' } }}
+                        >
+                            Cancel
+                        </Button>
                     </Box>
                 </Box>
             </Modal>
